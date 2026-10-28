@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Rescue Request Validation
+    function isValidRescueRequest(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'vehicleType', 'location', 'problem', 'provider', 'status', 'createdAt'])
+        && data.keys().hasOnly(['id', 'userId', 'type', 'vehicleType', 'location', 'problem', 'batteryLevel', 'instructions', 'provider', 'status', 'rating', 'review', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId == request.auth.uid
+        && data.type in ['Charging', 'Mechanic']
+        && data.vehicleType is string && data.vehicleType.size() <= 50
+        && data.location is string && data.location.size() <= 500
+        && data.problem is string && data.problem.size() <= 100
+        && (!('batteryLevel' in data) || (data.batteryLevel is string && data.batteryLevel.size() <= 20))
+        && (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 1000))
+        && (!('rating' in data) || (data.rating is int && data.rating >= 1 && data.rating <= 5))
+        && (!('review' in data) || (data.review is string && data.review.size() <= 1000))
+        && data.provider is map
+        && data.provider.name is string && data.provider.name.size() <= 100
+        && data.provider.distance is string && data.provider.distance.size() <= 20
+        && data.provider.fee is string && data.provider.fee.size() <= 20
+        && data.status in ['Pending', 'Accepted', 'Provider on the Way', 'Service Started', 'Completed'];
+    }
+
+    // User Profile Validation
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'name', 'phoneNumber', 'email', 'photoURL', 'currentBattery', 'maxRange', 'vehicleModel', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20))
+        && data.email is string && data.email.size() <= 100
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && (!('currentBattery' in data) || (data.currentBattery is number && data.currentBattery >= 0 && data.currentBattery <= 100))
+        && (!('maxRange' in data) || (data.maxRange is number && data.maxRange >= 0))
+        && (!('vehicleModel' in data) || (data.vehicleModel is string && data.vehicleModel.size() <= 100))
+        && data.updatedAt == request.time;
+    }
+
+    // Chat Message Validation
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['userId', 'role', 'content', 'timestamp'])
+        && data.keys().hasOnly(['userId', 'role', 'content', 'timestamp'])
+        && data.userId == request.auth.uid
+        && data.role in ['user', 'model']
+        && data.content is string && data.content.size() <= 5000
+        && data.timestamp == request.time;
+    }
+
+    match /requests/{requestId} {
+      allow get: if isOwner(resource.data.userId);
+      allow list: if isOwner(resource.data.userId);
+      
+      allow create: if isEmailVerified() 
+        && isValidId(requestId)
+        && isValidRescueRequest(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+        
+      allow update: if isOwner(resource.data.userId)
+        && isValidRescueRequest(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          // Action: Update Status
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])) ||
+          // Action: Update Details (only if still Pending)
+          (resource.data.status == 'Pending' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vehicleType', 'location', 'problem', 'batteryLevel', 'instructions'])) ||
+          // Action: Rate & Review (only if Completed)
+          (resource.data.status == 'Completed' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'review']))
+        );
+        
+      allow delete: if isOwner(resource.data.userId) && resource.data.status == 'Pending';
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.email == resource.data.email;
+
+      match /chat_messages/{messageId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChatMessage(request.resource.data);
+      }
+    }
+  }
+}

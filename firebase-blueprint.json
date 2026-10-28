@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "rescueRequest": {
+      "title": "Rescue Request",
+      "description": "A request for emergency charging or mechanic assistance.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["Charging", "Mechanic"] },
+        "vehicleType": { "type": "string", "maxLength": 50 },
+        "location": { "type": "string", "maxLength": 500 },
+        "problem": { "type": "string", "maxLength": 100 },
+        "batteryLevel": { "type": "string", "maxLength": 20 },
+        "instructions": { "type": "string", "maxLength": 1000 },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "maxLength": 100 },
+            "distance": { "type": "string", "maxLength": 20 },
+            "fee": { "type": "string", "maxLength": 20 }
+          },
+          "required": ["name", "distance", "fee"]
+        },
+        "status": { "type": "string", "enum": ["Pending", "Accepted", "Provider on the Way", "Service Started", "Completed"] },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "review": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "type", "vehicleType", "location", "problem", "provider", "status", "createdAt"]
+    },
+    "userProfile": {
+      "title": "User Profile",
+      "description": "Extended profile information for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "phoneNumber": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 1000 },
+        "currentBattery": { "type": "number", "description": "Current battery percentage (0-100)." },
+        "maxRange": { "type": "number", "description": "Maximum range of the vehicle in km." },
+        "vehicleModel": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "email", "updatedAt"]
+    },
+    "chatMessage": {
+      "title": "Chat Message",
+      "description": "A single message in the AI chat board.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "content": { "type": "string", "maxLength": 5000 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "role", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "requests/{requestId}": {
+      "schema": "rescueRequest",
+      "description": "The collection of rescue requests."
+    },
+    "users/{userId}": {
+      "schema": "userProfile",
+      "description": "The collection of user profiles."
+    },
+    "users/{userId}/chat_messages/{messageId}": {
+      "schema": "chatMessage",
+      "description": "A collection of chat messages for a specific user."
+    }
+  }
+}
